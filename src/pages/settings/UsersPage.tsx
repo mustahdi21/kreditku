@@ -47,7 +47,7 @@ import { RequirePermission } from '@/routes/ProtectedRoute';
 import { useAuth } from '@/auth/AuthProvider';
 import { useMembers, useUpdateMember } from '@/data/admin';
 import { getSupabaseClient } from '@/lib/supabase';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, isEdgeFunctionMissing } from '@/lib/errors';
 import { PERMISSIONS, ROLE_PERMISSIONS, type Permission } from '@/auth/permissions';
 import { MEMBER_ROLES, ROLE_LABELS, type MemberRole } from '@/core/types';
 import { inviteUserSchema, type InviteUserInput } from '@/core/validation';
@@ -92,13 +92,6 @@ const PERMISSION_LABELS: Record<Permission, string> = {
 interface InviteOutcome {
   readonly deployRequired: boolean;
   readonly message: string;
-}
-
-function detectDeployRequirement(rawMessage: string, status?: number): boolean {
-  if (status === 404) return true;
-  return /failed to send a request to the edge function|function not found|not found|relates to a function that was not deployed|404/i.test(
-    rawMessage,
-  );
 }
 
 function UsersContent(): JSX.Element {
@@ -147,13 +140,13 @@ function UsersContent(): JSX.Element {
       if (response.error) {
         const rawMessage = errorMessage(response.error);
         const status = (response.error as { context?: { status?: number } }).context?.status;
-        setInviteOutcome({ deployRequired: detectDeployRequirement(rawMessage, status), message: rawMessage });
+        setInviteOutcome({ deployRequired: isEdgeFunctionMissing(rawMessage, status), message: rawMessage });
         return;
       }
 
       const payload = response.data as { error?: string; message?: string } | null;
       if (payload?.error) {
-        setInviteOutcome({ deployRequired: detectDeployRequirement(payload.error), message: payload.error });
+        setInviteOutcome({ deployRequired: isEdgeFunctionMissing(payload.error), message: payload.error });
         return;
       }
 
@@ -163,7 +156,7 @@ function UsersContent(): JSX.Element {
       form.reset({ email: '', fullName: '', role: 'VIEWER' });
     } catch (error) {
       const rawMessage = errorMessage(error);
-      setInviteOutcome({ deployRequired: detectDeployRequirement(rawMessage), message: rawMessage });
+      setInviteOutcome({ deployRequired: isEdgeFunctionMissing(rawMessage), message: rawMessage });
     } finally {
       setInviting(false);
     }

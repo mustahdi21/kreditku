@@ -123,6 +123,30 @@ export function isAuthError(error: unknown): boolean {
   return appError.kind === 'AUTH' || appError.kind === 'PERMISSION';
 }
 
+/**
+ * True HANYA bila server menyatakan Edge Function yang dipanggil tidak ada.
+ *
+ * Pembedaan ini penting karena dua kegagalan yang sangat berbeda punya gejala
+ * yang mirip di mata pengguna:
+ *
+ *   * fungsi belum di-deploy  -> perlu tindakan administrator, pesannya harus
+ *     berisi langkah deploy;
+ *   * jaringan gagal          -> tidak ada hubungannya dengan deployment, dan
+ *     menampilkan instruksi deploy justru menyesatkan.
+ *
+ * Pesan `Failed to send a request to the Edge Function` berasal dari supabase-js
+ * untuk kegagalan jaringan apa pun, jadi TIDAK boleh dianggap sebagai penanda
+ * fungsi yang tidak ada. Begitu pula angka 404 yang muncul di teks pesan bebas:
+ * yang diuji hanyalah kalimat penolakan milik platform.
+ */
+export function isEdgeFunctionMissing(message: unknown, status?: number): boolean {
+  if (status === 404) return true;
+  const text = typeof message === 'string' ? message : errorMessage(message);
+  return /requested function was not found|function not found|relates to a function that was not deployed/i.test(
+    text,
+  );
+}
+
 /** Pesan siap tampil dari error apa pun. */
 export function errorMessage(error: unknown): string {
   return toAppError(error).message;
