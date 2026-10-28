@@ -85,7 +85,7 @@ export function useUpdateSettings() {
 export async function fetchMembers(organizationId: string): Promise<MemberRow[]> {
   const result = await supabase()
     .from(TABLES.members)
-    .select('*, profiles (id, full_name, email, phone, is_active)')
+    .select('*, profiles!organization_members_user_id_fkey (id, full_name, email, phone, is_active)')
     .eq('organization_id', organizationId)
     .order('created_at');
   return unwrap<MemberRow[]>(result as never, 'memuat anggota organisasi');

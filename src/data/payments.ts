@@ -51,7 +51,7 @@ export async function fetchPayments(filters: PaymentFilters): Promise<ListResult
   let query = supabase()
     .from(TABLES.payments)
     .select(
-      '*, credit_contracts (id, contract_number, customer_id, customers (full_name, customer_number)), profiles (full_name, email)',
+      '*, credit_contracts (id, contract_number, customer_id, customers (full_name, customer_number)), profiles!payments_created_by_fkey (full_name, email)',
       { count: 'exact' },
     )
     .order('paid_at', { ascending: false })
@@ -81,7 +81,7 @@ export async function fetchPayment(id: string): Promise<PaymentWithRelations> {
   const result = await supabase()
     .from(TABLES.payments)
     .select(
-      '*, credit_contracts (id, contract_number, customer_id, customers (full_name, customer_number)), profiles (full_name, email)',
+      '*, credit_contracts (id, contract_number, customer_id, customers (full_name, customer_number)), profiles!payments_created_by_fkey (full_name, email)',
     )
     .eq('id', id)
     .maybeSingle();
@@ -136,7 +136,7 @@ export function usePaymentReversal(paymentId: string | undefined) {
 export async function fetchContractPayments(contractId: string): Promise<PaymentWithRelations[]> {
   const result = await supabase()
     .from(TABLES.payments)
-    .select('*, credit_contracts (id, contract_number, customer_id, customers (full_name, customer_number)), profiles (full_name, email)')
+    .select('*, credit_contracts (id, contract_number, customer_id, customers (full_name, customer_number)), profiles!payments_created_by_fkey (full_name, email)')
     .eq('contract_id', contractId)
     .order('paid_at', { ascending: false });
   return unwrap<PaymentWithRelations[]>(result as never, 'memuat pembayaran kontrak');
