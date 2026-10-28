@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -----------------------------------------------------------------------------
+   KreditKu — token desain
+   Tema awal: LIGHT MODE. Warna utama indigo. Kontras memenuhi WCAG AA untuk
+   teks utama, dengan fokus yang selalu terlihat.
+   -------------------------------------------------------------------------- */
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 30% 12%;
+
+    /* Indigo 600 */
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 226 100% 97%;
+    --secondary-foreground: 243 60% 30%;
+
+    --muted: 220 20% 96%;
+    --muted-foreground: 220 12% 42%;
+
+    --accent: 226 100% 97%;
+    --accent-foreground: 243 60% 30%;
+
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status operasional */
+    --success: 152 62% 32%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 92% 42%;
+    --warning-foreground: 0 0% 100%;
+    --info: 205 85% 40%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 220 18% 89%;
+    --input: 220 18% 87%;
+    --ring: 243 75% 59%;
+
+    --radius: 0.6rem;
+  }
+
+  .dark {
+    --background: 224 32% 8%;
+    --foreground: 210 30% 96%;
+
+    --card: 224 30% 11%;
+    --card-foreground: 210 30% 96%;
+
+    --popover: 224 30% 11%;
+    --popover-foreground: 210 30% 96%;
+
+    --primary: 243 80% 68%;
+    --primary-foreground: 224 40% 10%;
+
+    --secondary: 224 22% 18%;
+    --secondary-foreground: 210 30% 96%;
+
+    --muted: 224 22% 17%;
+    --muted-foreground: 218 14% 68%;
+
+    --accent: 224 22% 20%;
+    --accent-foreground: 210 30% 96%;
+
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 45% 45%;
+    --success-foreground: 224 40% 8%;
+    --warning: 32 85% 55%;
+    --warning-foreground: 224 40% 8%;
+    --info: 205 75% 58%;
+    --info-foreground: 224 40% 8%;
+
+    --border: 224 20% 22%;
+    --input: 224 20% 24%;
+    --ring: 243 80% 68%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Fokus selalu terlihat untuk aksesibilitas keyboard. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Angka finansial rata kanan dan menggunakan tabular figures. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  .stat-value {
+    @apply tabular text-2xl font-semibold tracking-tight;
+  }
+
+  .table-cell-money {
+    @apply tabular text-right whitespace-nowrap;
+  }
+}
+
+/* Scrollbar tipis agar tabel tetap rapi tanpa mengurangi keterbacaan. */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+  }
+}

@@ -1,0 +1,77 @@
+# =============================================================================
+# KreditKu — Integrasi Berkelanjutan (CI)
+# Berjalan pada setiap pull request dan pada push ke branch non-main.
+# Tidak melakukan deployment, tidak memerlukan secret produksi.
+# =============================================================================
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, Typecheck, Test, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Siapkan Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pasang dependencies (reproducible)
+        run: npm ci
+
+      - name: Pemeriksaan lingkungan proyek
+        run: node scripts/check-env.mjs
+        continue-on-error: true
+
+      - name: Pemeriksaan sintaks SQL migrasi
+        run: |
+          python3 -m pip install --quiet --user sqlglot
+          python3 scripts/sql_parse.py supabase/migrations/*.sql supabase/seed.sql
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit test (logika keuangan & aturan bisnis)
+        run: npm test
+
+      - name: Build produksi
+        env:
+          # Nilai contoh hanya untuk membuktikan build berjalan.
+          # Build nyata memakai secret/variable repositori pada workflow deploy.
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjIwMDAwMDAwMDB9.placeholder-signature-for-ci' }}
+          VITE_BASE_PATH: /
+        run: npm run build
+
+      - name: Verifikasi artefak & pemindaian rahasia
+        run: node scripts/verify-deploy.mjs --dir dist
+
+      - name: Simpan artefak build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+          retention-days: 7

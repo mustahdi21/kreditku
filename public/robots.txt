@@ -1,0 +1,3 @@
+User-agent: *
+Disallow: /
+# Aplikasi internal: tidak untuk diindeks mesin pencari.

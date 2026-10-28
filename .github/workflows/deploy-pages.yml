@@ -1,0 +1,132 @@
+# =============================================================================
+# KreditKu — Deployment ke GitHub Pages
+#
+# Alur:
+#   push ke main → lint → typecheck → test → build → deploy → verifikasi
+#
+# KEBERSIHAN RAHASIA:
+#   Hanya VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY yang digunakan.
+#   Keduanya bersifat PUBLIK dan memang ter-embed ke bundle; keamanan data
+#   dijaga oleh Row Level Security, bukan oleh kerahasiaan kunci ini.
+#   JANGAN pernah menambahkan service_role key sebagai secret pada workflow ini.
+#
+# KONFIGURASI YANG DIPERLUKAN (sekali saja, oleh pemilik repositori):
+#   Settings → Secrets and variables → Actions
+#     Secrets   : VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+#     Variables : VITE_BASE_PATH  (contoh: /kreditku/) — kosongkan bila memakai
+#                 domain sendiri (CNAME) atau root domain.
+#   Settings → Pages → Source: GitHub Actions
+# =============================================================================
+
+name: Deploy ke GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verifikasi & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Siapkan Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pasang dependencies (reproducible)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit test
+        run: npm test
+
+      - name: Pastikan kunci yang dipakai adalah kunci publik
+        env:
+          ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANON_KEY:-}" ]; then
+            echo "::error::Secret VITE_SUPABASE_ANON_KEY belum diisi pada repositori."
+            exit 1
+          fi
+          ROLE=$(node -e "
+            const key = process.env.ANON_KEY;
+            try {
+              const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64').toString('utf8'));
+              process.stdout.write(String(payload.role ?? ''));
+            } catch { process.stdout.write(''); }
+          ")
+          echo "Peran kunci terdeteksi: ${ROLE:-tidak diketahui}"
+          if [ "$ROLE" = "service_role" ]; then
+            echo "::error::Kunci yang dipasang adalah service_role. Kunci ini melewati RLS dan tidak boleh dipakai pada frontend."
+            exit 1
+          fi
+
+      - name: Build produksi
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH }}
+          VITE_APP_NAME: ${{ vars.VITE_APP_NAME || 'KreditKu' }}
+        run: |
+          if [ -z "${VITE_BASE_PATH:-}" ]; then
+            export VITE_BASE_PATH="/"
+          fi
+          npm run build
+
+      - name: Verifikasi artefak & pemindaian rahasia
+        run: node scripts/verify-deploy.mjs --dir dist
+
+      - name: Siapkan GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Unggah artefak
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy ke GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Ringkasan hasil deployment
+        run: |
+          echo "### KreditKu berhasil di-deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL aplikasi: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Langkah verifikasi manual yang tersisa:" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Masuk menggunakan akun Super Admin." >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Pastikan data organisasi tampil pada dashboard." >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Uji isolasi organisasi (akun organisasi lain tidak boleh melihat data)." >> "$GITHUB_STEP_SUMMARY"
