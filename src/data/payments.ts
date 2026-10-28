@@ -268,7 +268,7 @@ export async function fetchPenalties(filters: PenaltyFilters): Promise<ListResul
   if (filters.statuses.length > 0) query = query.in('status', filters.statuses as string[]);
   if (filters.contractId) query = query.eq('contract_id', filters.contractId);
   const term = sanitizeSearchTerm(filters.search);
-  if (term) query = query.ilike('rule_snapshot::text', `%${term}%`);
+  if (term) query = query.ilike('rule_snapshot_text', `%${term}%`);
 
   const result = await query;
   return { rows: unwrap<PenaltyRow[]>(result as never, 'memuat denda'), total: result.count ?? 0 };
