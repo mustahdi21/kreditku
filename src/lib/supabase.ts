@@ -3,6 +3,16 @@
  *
  * Hanya anon/publishable key yang dipakai. Keamanan data sepenuhnya bersandar
  * pada Row Level Security di database (lihat supabase/migrations/*_rls.sql).
+ *
+ * JANGAN menambahkan header global kustom di sini.
+ * Preflight CORS untuk Edge Function dijawab oleh fungsi itu sendiri dengan
+ * daftar header yang tetap: authorization, x-client-info, apikey, content-type.
+ * Header global kustom ikut dikirim pada setiap permintaan, sehingga header yang
+ * tidak ada di daftar itu membuat browser menolak preflight — permintaan tidak
+ * pernah terkirim dan supabase-js hanya melaporkannya sebagai
+ * "Failed to send a request to the Edge Function". PostgREST dan GoTrue tidak
+ * terpengaruh karena keduanya memantulkan header yang diminta, jadi gejalanya
+ * hanya muncul pada pemanggilan Edge Function.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -34,9 +44,6 @@ export function getSupabaseClient(): SupabaseClient {
         detectSessionInUrl: true,
         flowType: 'pkce',
         storageKey: 'kreditku.auth',
-      },
-      global: {
-        headers: { 'x-application-name': 'kreditku' },
       },
     });
   }
