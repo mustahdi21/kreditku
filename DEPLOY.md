@@ -163,7 +163,66 @@ lalu deploy frontend).
 
 ---
 
-## 10. Checklist sebelum produksi
+## 10. Portal pelanggan & pembayaran QRIS
+
+Portal pelanggan adalah permukaan terpisah dari aplikasi admin, dengan masuk
+sendiri. Alamatnya memakai basis aplikasi yang sama:
+
+| Halaman | Alamat |
+|---|---|
+| Aplikasi admin | `<URL>/#/app` |
+| Portal pelanggan | `<URL>/#/portal` |
+| Masuk portal | `<URL>/#/portal/masuk` |
+
+Yang boleh masuk portal hanya akun yang **terhubung ke sebuah baris pelanggan**.
+Akun staf justru ditolak di sana, karena portal menampilkan data satu pelanggan,
+bukan data usaha. Penautan akun dilakukan dari aplikasi admin lewat
+`rpc_link_customer_account(p_customer_id, p_email)`.
+
+### Fungsi Edge yang dibutuhkan
+
+| Fungsi | Verify JWT | Secret | Alasan |
+|---|---|---|---|
+| `invite-user` | `true` | — | Dipanggil dari aplikasi dengan sesi pengguna. |
+| `qris-confirm` | **`false`** | `QRIS_WEBHOOK_SECRET` | Dipanggil MacroDroid di HP merchant, yang tidak punya sesi Supabase. Satu-satunya penjaga adalah secret tersebut — pakai nilai acak panjang. |
+
+Nilai `verify_jwt` juga tercatat di `supabase/config.toml` supaya penerapan
+berikutnya tidak bergantung pada mengingat sakelarnya di dashboard.
+
+### Pengaturan integrasi
+
+```sql
+update public.app_settings
+   set integrations = integrations
+     || jsonb_build_object(
+          'qrisStaticPayload', '<payload QRIS statis merchant>',
+          'qrisNotifMarker', '<potongan kata yang selalu muncul pada notifikasi bank>'
+        )
+ where organization_id = '<id organisasi>';
+```
+
+`qrisNotifMarker` harus diambil dari notifikasi nyata, bukan ditebak. Selama
+penandanya belum tepat, setiap notifikasi tetap tersimpan dengan status
+`BUKAN_QRIS` pada tabel `qris_confirmations`, sehingga teks aslinya dapat dibaca
+lalu penandanya disesuaikan. Tidak ada notifikasi yang hilang.
+
+### Makro MacroDroid
+
+| Bagian | Nilai |
+|---|---|
+| Trigger | Notification Received, dari aplikasi bank/dompet digital pengirim notifikasi pembayaran |
+| Action | HTTP Request, `POST https://<ref>.supabase.co/functions/v1/qris-confirm` |
+| Header | `x-webhook-secret: <QRIS_WEBHOOK_SECRET>` dan `Content-Type: application/json` |
+| Body | `{"notification": "[notification_text]"}` — sisipkan lewat magic text, jangan diketik manual |
+
+Pembayaran hanya dicatat otomatis bila tepat **satu** tagihan terbuka bernominal
+sama. Bila ada lebih dari satu, permintaannya dipindah ke status `REVIEW` untuk
+ditinjau kasir — sistem tidak menebak, karena menebak berarti mencatat
+pembayaran pada kontrak orang lain.
+
+---
+
+## 11. Checklist sebelum produksi
 
 - [ ] `npm run db:check` lulus pada database produksi (RLS + rumus bunga).
 - [ ] `npm run verify:deploy -- --url <URL>` lulus.
@@ -173,3 +232,7 @@ lalu deploy frontend).
 - [ ] Akun demo dari `seed.sql` tidak ada pada database produksi.
 - [ ] Audit log berisi aktivitas nyata (`Pengaturan → Audit Log`).
 - [ ] Kebijakan denda sudah disesuaikan dengan perjanjian & hukum yang berlaku.
+- [ ] `qris-confirm` ter-deploy dengan Verify JWT dimatikan dan `QRIS_WEBHOOK_SECRET` terisi nilai acak panjang.
+- [ ] `qrisStaticPayload` dan `qrisNotifMarker` sudah diisi dari QR merchant dan notifikasi bank yang nyata.
+- [ ] Satu pembayaran QRIS nyata sudah diuji: notifikasi HP sampai cicilan tercatat lunas.
+- [ ] Setiap pelanggan yang akan memakai portal sudah punya akun dan tertaut lewat `rpc_link_customer_account`.

@@ -91,6 +91,8 @@ export const TABLES = {
   auditLogs: 'audit_logs',
   settings: 'app_settings',
   documentTemplates: 'document_templates',
+  qrisRequests: 'qris_payment_requests',
+  qrisConfirmations: 'qris_confirmations',
 } as const;
 
 /** Nama fungsi RPC yang tersedia (security definer di sisi database). */
@@ -116,4 +118,9 @@ export const RPC = {
   cancelInstallment: 'rpc_cancel_installment',
   markNotificationsRead: 'rpc_mark_notifications_read',
   touchLogin: 'fn_touch_login',
+  currentCustomerId: 'fn_current_customer_id',
+  portalQrisPayload: 'rpc_portal_qris_payload',
+  createQrisRequest: 'rpc_create_qris_request',
+  cancelQrisRequest: 'rpc_cancel_qris_request',
+  linkCustomerAccount: 'rpc_link_customer_account',
 } as const;

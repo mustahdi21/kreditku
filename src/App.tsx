@@ -17,6 +17,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { Spinner } from '@/components/ui';
 import { AppShell } from '@/components/layout/AppShell';
 import { ProtectedRoute, PublicOnlyRoute } from '@/routes/ProtectedRoute';
+import { PortalPublicOnlyRoute, PortalRoute } from '@/routes/PortalRoute';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
@@ -46,6 +47,17 @@ const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'));
 const UsersPage = lazy(() => import('@/pages/settings/UsersPage'));
 const AuditLogPage = lazy(() => import('@/pages/settings/AuditLogPage'));
 const ProfilePage = lazy(() => import('@/pages/settings/ProfilePage'));
+
+const PortalShell = lazy(() => import('@/components/layout/PortalShell').then((m) => ({ default: m.PortalShell })));
+const PortalLoginPage = lazy(() =>
+  import('@/pages/portal/PortalLoginPage').then((m) => ({ default: m.PortalLoginPage })),
+);
+const PortalHomePage = lazy(() =>
+  import('@/pages/portal/PortalHomePage').then((m) => ({ default: m.PortalHomePage })),
+);
+const PortalHistoryPage = lazy(() =>
+  import('@/pages/portal/PortalHistoryPage').then((m) => ({ default: m.PortalHistoryPage })),
+);
 
 function RouteFallback(): JSX.Element {
   return (
@@ -108,6 +120,27 @@ export function App(): JSX.Element {
                   <Route path="settings/users" element={<UsersPage />} />
                   <Route path="settings/audit" element={<AuditLogPage />} />
                   <Route path="profile" element={<ProfilePage />} />
+                </Route>
+
+                <Route
+                  path="/portal/masuk"
+                  element={
+                    <PortalPublicOnlyRoute>
+                      <PortalLoginPage />
+                    </PortalPublicOnlyRoute>
+                  }
+                />
+
+                <Route
+                  path="/portal"
+                  element={
+                    <PortalRoute>
+                      <PortalShell />
+                    </PortalRoute>
+                  }
+                >
+                  <Route index element={<PortalHomePage />} />
+                  <Route path="riwayat" element={<PortalHistoryPage />} />
                 </Route>
 
                 <Route path="/" element={<Navigate to="/app" replace />} />
