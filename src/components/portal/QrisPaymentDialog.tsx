@@ -34,6 +34,7 @@ import type { Rupiah } from '@/lib/money';
 import {
   buildPaymentQrPayload,
   formatRupiah,
+  quickAmountsFor,
   useCreateQrisRequest,
   useMerchantQris,
   type QrisRequestResult,
@@ -146,6 +147,7 @@ export function QrisPaymentDialog({
   };
 
   const sisaSetelahBayar = Math.max(maxAmount - nilai, 0);
+  const nominalCepat = quickAmountsFor(maxAmount);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -199,22 +201,47 @@ export function QrisPaymentDialog({
               ) : null}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setNominal(defaultAmount as Rupiah)}>
-                Bayar cicilan ini ({formatRupiah(defaultAmount)})
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setNominal(Math.round(defaultAmount / 2) as Rupiah)}
-              >
-                Setengahnya
-              </Button>
-              {maxAmount > defaultAmount ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setNominal(maxAmount as Rupiah)}>
-                  Seluruh tagihan ({formatRupiah(maxAmount)})
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Sesuai tagihan</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setNominal(defaultAmount as Rupiah)}>
+                  Bayar cicilan ini ({formatRupiah(defaultAmount)})
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNominal(Math.round(defaultAmount / 2) as Rupiah)}
+                >
+                  Setengahnya
+                </Button>
+                {maxAmount > defaultAmount ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setNominal(maxAmount as Rupiah)}>
+                    Seluruh tagihan ({formatRupiah(maxAmount)})
+                  </Button>
+                ) : null}
+              </div>
+
+              {nominalCepat.length > 0 ? (
+                <>
+                  <p className="pt-1 text-xs font-medium text-muted-foreground">Nominal bulat</p>
+                  <div className="flex flex-wrap gap-2">
+                    {nominalCepat.map((nominal) => (
+                      <Button
+                        key={nominal}
+                        type="button"
+                        variant={nilai === nominal ? 'secondary' : 'outline'}
+                        size="sm"
+                        onClick={() => setNominal(nominal as Rupiah)}
+                      >
+                        {formatRupiah(nominal)}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Nominal yang melebihi total tagihan kontrak tidak ditampilkan, karena akan ditolak server.
+                  </p>
+                </>
               ) : null}
             </div>
 

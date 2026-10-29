@@ -15,6 +15,8 @@ import { crc16Ccitt, parseQris, verifyQrisCrc } from '@/core/qris';
 import {
   buildPaymentQrPayload,
   contractOutstanding,
+  QUICK_AMOUNTS,
+  quickAmountsFor,
   formatRupiah,
   isOverdue,
   payableInstallments,
@@ -150,6 +152,33 @@ describe('contractOutstanding — batas nominal per kontrak', () => {
 
   it('mengembalikan nol untuk kontrak yang tidak ada', () => {
     expect(contractOutstanding([], 'c-9')).toEqual({ pokok: 0, denda: 0, total: 0 });
+  });
+});
+
+describe('quickAmountsFor — nominal cepat yang masuk akal', () => {
+  it('menampilkan seluruh nominal cepat bila tagihannya besar', () => {
+    expect(quickAmountsFor(5_000_000)).toEqual([100000, 200000, 500000, 1000000]);
+  });
+
+  it('menyaring nominal yang melebihi tagihan', () => {
+    expect(quickAmountsFor(500_000)).toEqual([100000, 200000, 500000]);
+    expect(quickAmountsFor(250_000)).toEqual([100000, 200000]);
+  });
+
+  it('menerima nominal yang sama persis dengan tagihan', () => {
+    expect(quickAmountsFor(200_000)).toEqual([100000, 200000]);
+  });
+
+  it('mengembalikan kosong bila tidak ada yang muat', () => {
+    expect(quickAmountsFor(50_000)).toEqual([]);
+    expect(quickAmountsFor(0)).toEqual([]);
+    expect(quickAmountsFor(-1000)).toEqual([]);
+  });
+
+  it('daftarnya menaik dan tanpa duplikat', () => {
+    const naik = [...QUICK_AMOUNTS].sort((a, b) => a - b);
+    expect([...QUICK_AMOUNTS]).toEqual(naik);
+    expect(new Set(QUICK_AMOUNTS).size).toBe(QUICK_AMOUNTS.length);
   });
 });
 

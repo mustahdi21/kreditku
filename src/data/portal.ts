@@ -259,6 +259,29 @@ export function totalOutstanding(rows: readonly InstallmentDetailRow[]): {
 }
 
 /**
+ * Nominal cepat yang ditawarkan di portal.
+ *
+ * Angka bulat yang paling sering dipakai orang saat membayar. Daftarnya sengaja
+ * pendek: terlalu banyak pilihan membuat pelanggan ragu, dan yang paling
+ * menentukan tetap tagihan cicilannya sendiri yang sudah tersedia sebagai
+ * tombol terpisah.
+ */
+export const QUICK_AMOUNTS: readonly number[] = [100000, 200000, 500000, 1000000];
+
+/**
+ * Nominal cepat yang masuk akal untuk sebuah tagihan.
+ *
+ * Angka yang melebihi total tagihan kontrak TIDAK ditampilkan, karena server
+ * akan menolaknya — menawarkan tombol yang pasti gagal hanya membuang waktu
+ * pelanggan. Bila tidak ada yang muat, daftarnya kosong dan bagian itu tidak
+ * perlu ditampilkan sama sekali.
+ */
+export function quickAmountsFor(maxAmount: number): number[] {
+  if (!Number.isFinite(maxAmount) || maxAmount <= 0) return [];
+  return QUICK_AMOUNTS.filter((nominal) => nominal <= maxAmount);
+}
+
+/**
  * Total tagihan terbuka pada SATU kontrak saja.
  *
  * Dipakai sebagai batas atas nominal di portal. Batas yang ditegakkan server
