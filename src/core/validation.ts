@@ -76,13 +76,15 @@ export const forgotPasswordSchema = z.object({
 });
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 
+const strongPassword = z
+  .string()
+  .min(10, 'Password minimal 10 karakter')
+  .regex(/[A-Za-z]/, 'Password harus mengandung huruf')
+  .regex(/[0-9]/, 'Password harus mengandung angka');
+
 export const resetPasswordSchema = z
   .object({
-    password: z
-      .string()
-      .min(10, 'Password minimal 10 karakter')
-      .regex(/[A-Za-z]/, 'Password harus mengandung huruf')
-      .regex(/[0-9]/, 'Password harus mengandung angka'),
+    password: strongPassword,
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -105,6 +107,7 @@ export const inviteUserSchema = z.object({
   email: z.string().trim().email('Format email tidak valid'),
   fullName: nameField,
   role: z.enum(MEMBER_ROLES, { errorMap: () => ({ message: 'Role tidak valid' }) }),
+  initialPassword: z.union([strongPassword, z.literal('')]).optional(),
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 

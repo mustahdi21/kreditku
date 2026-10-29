@@ -1,15 +1,28 @@
 /**
  * UsersPage.tsx — Manajemen anggota organisasi.
  *
+ * DUA CARA MENAMBAH PENGGUNA
+ * --------------------------
+ * 1. Kirim undangan (bawaan). Pengguna menerima tautan email dan mengatur
+ *    passwordnya sendiri, sehingga password-nya tidak pernah diketahui admin.
+ *    Cara ini memerlukan SMTP yang berfungsi pada proyek Supabase.
+ * 2. Buat akun dengan password awal. Dipakai bila SMTP belum tersedia: admin
+ *    menetapkan password awal, menyampaikannya langsung kepada pengguna, dan
+ *    pengguna menggantinya di halaman Profil (auth.updateUser, tidak butuh
+ *    email). Dalam cara ini admin mengetahui password awal tersebut, jadi
+ *    penggantian oleh pengguna bukan sekadar saran.
+ *
  * KEAMANAN
  * --------
- * 1. Undangan dikirim melalui Edge Function `invite-user` di server. Admin
- *    TIDAK PERNAH mengetikkan password pengguna lain — pengguna menerima
- *    tautan undangan dan mengatur passwordnya sendiri.
+ * 1. Penambahan anggota dikerjakan Edge Function `invite-user` di server.
  * 2. Rahasia (service role key) berada di secrets Edge Function, bukan di
  *    browser. Bila fungsi belum di-deploy, halaman ini menampilkan langkah
  *    manual dan TIDAK pernah mengaku berhasil.
- * 3. Penegakan sesungguhnya ada di RLS + fungsi server; matriks izin di sini
+ * 3. Password awal hanya dikirim sekali ke fungsi, tidak disimpan aplikasi,
+ *    tidak ditulis ke log, dan tidak pernah dikembalikan oleh server.
+ * 4. Akun yang sudah ada TIDAK pernah diubah passwordnya oleh halaman ini —
+ *    hanya didaftarkan sebagai anggota.
+ * 5. Penegakan sesungguhnya ada di RLS + fungsi server; matriks izin di sini
  *    hanya untuk tampilan.
  */
 
@@ -111,7 +124,7 @@ function UsersContent(): JSX.Element {
 
   const form = useForm<InviteUserInput>({
     resolver: zodResolver(inviteUserSchema),
-    defaultValues: { email: '', fullName: '', role: 'VIEWER' },
+    defaultValues: { email: '', fullName: '', role: 'VIEWER', initialPassword: '' },
   });
 
   const members = membersQuery.data ?? [];
@@ -128,12 +141,14 @@ function UsersContent(): JSX.Element {
     setInviteOutcome(null);
     try {
       const client = getSupabaseClient();
+      const initialPassword = values.initialPassword?.trim() ?? '';
       const response = await client.functions.invoke('invite-user', {
         body: {
           email: values.email,
           fullName: values.fullName,
           role: values.role,
           organizationId,
+          ...(initialPassword ? { initialPassword } : {}),
         },
       });
 
@@ -144,16 +159,23 @@ function UsersContent(): JSX.Element {
         return;
       }
 
-      const payload = response.data as { error?: string; message?: string } | null;
+      const payload = response.data as { error?: string; message?: string; note?: string } | null;
       if (payload?.error) {
         setInviteOutcome({ deployRequired: isEdgeFunctionMissing(payload.error), message: payload.error });
         return;
       }
 
-      notifySuccess('Undangan terkirim.', `${values.email} akan menerima tautan untuk mengatur password sendiri.`);
+      if (initialPassword) {
+        notifySuccess(
+          'Akun dibuat.',
+          `Sampaikan password awal kepada ${values.email} secara langsung. Ia dapat menggantinya di halaman Profil.`,
+        );
+      } else {
+        notifySuccess('Undangan terkirim.', `${values.email} akan menerima tautan untuk mengatur password sendiri.`);
+      }
       void queryClient.invalidateQueries({ queryKey: ['members'] });
       setInviteOpen(false);
-      form.reset({ email: '', fullName: '', role: 'VIEWER' });
+      form.reset({ email: '', fullName: '', role: 'VIEWER', initialPassword: '' });
     } catch (error) {
       const rawMessage = errorMessage(error);
       setInviteOutcome({ deployRequired: isEdgeFunctionMissing(rawMessage), message: rawMessage });
@@ -224,7 +246,7 @@ function UsersContent(): JSX.Element {
         actions={
           <Button disabled={!can('users.manage')} onClick={() => setInviteOpen(true)}>
             <UserPlus aria-hidden />
-            Undang Pengguna
+            Tambah Pengguna
           </Button>
         }
       />
@@ -254,7 +276,7 @@ function UsersContent(): JSX.Element {
               searchPlaceholder="Cari nama atau email…"
               initialPageSize={20}
               emptyTitle="Belum ada anggota"
-              emptyDescription="Undang rekan kerja agar dapat mengakses organisasi ini."
+              emptyDescription="Tambahkan rekan kerja agar dapat mengakses organisasi ini."
             />
           )}
         </CardContent>
@@ -335,10 +357,11 @@ function UsersContent(): JSX.Element {
       >
         <DialogContent size="default">
           <DialogHeader>
-            <DialogTitle>Undang Pengguna</DialogTitle>
+            <DialogTitle>Tambah Pengguna</DialogTitle>
             <DialogDescription>
-              Undangan dikirim oleh Edge Function <code>invite-user</code> di server. Anda tidak perlu dan tidak boleh
-              mengisi password pengguna baru — pengguna mengatur passwordnya sendiri melalui tautan undangan.
+              Isi password awal untuk membuat akun langsung tanpa mengirim email — pilih ini bila SMTP belum
+              dikonfigurasi. Biarkan kosong bila ingin mengirim undangan: pengguna akan menerima tautan dan mengatur
+              passwordnya sendiri.
             </DialogDescription>
           </DialogHeader>
 
@@ -357,12 +380,26 @@ function UsersContent(): JSX.Element {
                 options={ROLE_OPTIONS}
               />
             </FormField>
+            <FormField
+              label="Password awal (opsional)"
+              htmlFor="invite-password"
+              error={form.formState.errors.initialPassword?.message}
+              hint="Minimal 10 karakter, mengandung huruf dan angka. Sampaikan kepada pengguna secara langsung; ia dapat menggantinya di halaman Profil."
+            >
+              <Input
+                id="invite-password"
+                type="password"
+                placeholder="Kosongkan untuk mengirim undangan email"
+                autoComplete="new-password"
+                {...form.register('initialPassword')}
+              />
+            </FormField>
 
             {inviteOutcome ? (
               <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
                 <p className="flex items-center gap-2 font-medium text-destructive">
                   <ShieldAlert className="h-4 w-4" aria-hidden />
-                  Undangan gagal dikirim
+                  Gagal menambah pengguna
                 </p>
                 {inviteOutcome.deployRequired ? (
                   <>
@@ -399,7 +436,7 @@ function UsersContent(): JSX.Element {
               </Button>
               <Button type="submit" loading={inviting}>
                 <UserPlus aria-hidden />
-                Kirim undangan
+                {form.watch('initialPassword') ? 'Buat akun' : 'Kirim undangan'}
               </Button>
             </DialogFooter>
           </form>

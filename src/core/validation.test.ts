@@ -5,6 +5,7 @@ import {
   creditSimulationSchema,
   customerSchema,
   formatZodError,
+  inviteUserSchema,
   loginSchema,
   mapZodErrors,
   paymentSchema,
@@ -22,8 +23,7 @@ describe('validation — autentikasi', () => {
   it('menolak password reset yang tidak memenuhi syarat keamanan', () => {
     expect(resetPasswordSchema.safeParse({ password: 'passwordku1', confirmPassword: 'passwordku1' }).success).toBe(
       true,
-    );
-    expect(resetPasswordSchema.safeParse({ password: 'pendek', confirmPassword: 'pendek' }).success).toBe(false);
+    );    expect(resetPasswordSchema.safeParse({ password: 'pendek', confirmPassword: 'pendek' }).success).toBe(false);
     expect(resetPasswordSchema.safeParse({ password: 'tanpaangkaaa', confirmPassword: 'tanpaangkaaa' }).success).toBe(
       false,
     );
@@ -188,5 +188,34 @@ describe('validation — utilitas error', () => {
     const mapped = mapZodErrors(result.error!);
     expect(Object.keys(mapped)).toContain('email');
     expect(Object.keys(mapped)).toContain('password');
+  });
+});
+
+describe('validation — penambahan anggota', () => {
+  const dasar = { email: 'staf@kreditku.id', fullName: 'Siti Rahmawati', role: 'CASHIER' as const };
+
+  it('menerima penambahan anggota tanpa password awal', () => {
+    expect(inviteUserSchema.safeParse(dasar).success).toBe(true);
+    expect(inviteUserSchema.safeParse({ ...dasar, initialPassword: '' }).success).toBe(true);
+  });
+
+  it('menerima password awal yang memenuhi syarat', () => {
+    expect(inviteUserSchema.safeParse({ ...dasar, initialPassword: 'RahasiaStaf2026' }).success).toBe(true);
+  });
+
+  it('menolak password awal yang terlalu pendek', () => {
+    const result = inviteUserSchema.safeParse({ ...dasar, initialPassword: 'pendek1' });
+    expect(result.success).toBe(false);
+  });
+
+  it('menolak password awal tanpa angka atau tanpa huruf', () => {
+    expect(inviteUserSchema.safeParse({ ...dasar, initialPassword: 'hanyahurufpanjang' }).success).toBe(false);
+    expect(inviteUserSchema.safeParse({ ...dasar, initialPassword: '1234567890123' }).success).toBe(false);
+  });
+
+  it('tetap menolak email dan nama yang tidak sah', () => {
+    expect(inviteUserSchema.safeParse({ ...dasar, email: 'bukan-email' }).success).toBe(false);
+    expect(inviteUserSchema.safeParse({ ...dasar, fullName: 'A' }).success).toBe(false);
+    expect(inviteUserSchema.safeParse({ ...dasar, role: 'PEMILIK' }).success).toBe(false);
   });
 });
