@@ -70,6 +70,9 @@ inspector_port = 8083
 [functions.invite-user]
 verify_jwt = true
 
+[functions.qris-confirm]
+verify_jwt = false
+
 [functions.reminder-dispatch]
 verify_jwt = false
 
