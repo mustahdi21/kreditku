@@ -20,6 +20,7 @@ import type {
   ContractSummaryRow,
   CustomerRow,
   InstallmentDetailRow,
+  PaymentAllocationRow,
   PaymentRow,
 } from '@/data/types';
 import { AppError, toAppError } from '@/lib/errors';
@@ -362,4 +363,38 @@ export async function checkInviteCode(code: string): Promise<InvitePreview> {
 export async function registerCustomerAccount(input: SignupInput): Promise<{ customerName: string | null }> {
   const hasil = await invokeCustomerSignup({ ...input });
   return { customerName: hasil.customer_name ?? null };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Rincian untuk halaman riwayat                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Rincian alokasi sebuah pembayaran: cicilan mana saja yang tertutup olehnya.
+ *
+ * Inilah yang menjawab pertanyaan pelanggan "pembayaran saya dipakai untuk
+ * apa?" — daftar pembayaran hanya menyebut nominal dan tanggal, sedangkan
+ * pemecahannya ke tiap cicilan ada di sini.
+ */
+export async function fetchPaymentAllocations(paymentId: string): Promise<PaymentAllocationRow[]> {
+  const result = await supabase()
+    .from(TABLES.allocations)
+    .select('*, installments (installment_number, due_date, total_due)')
+    .eq('payment_id', paymentId)
+    .order('created_at', { ascending: true });
+  return unwrap<PaymentAllocationRow[]>(result as never, 'memuat rincian alokasi pembayaran');
+}
+
+/**
+ * Rincian alokasi; hanya dimuat saat panelnya benar-benar dibuka.
+ *
+ * Tanpa `enabled`, halaman riwayat akan menembakkan satu permintaan untuk setiap
+ * baris pembayaran sekaligus — padahal pelanggan mungkin tidak membuka satu pun.
+ */
+export function usePaymentAllocations(paymentId: string | null) {
+  return useQuery({
+    queryKey: ['portal', 'payment-allocations', paymentId] as const,
+    queryFn: async () => fetchPaymentAllocations(paymentId as string),
+    enabled: Boolean(paymentId),
+  });
 }
