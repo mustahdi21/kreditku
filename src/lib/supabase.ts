@@ -93,6 +93,7 @@ export const TABLES = {
   documentTemplates: 'document_templates',
   qrisRequests: 'qris_payment_requests',
   qrisConfirmations: 'qris_confirmations',
+  customerInvites: 'customer_invites',
 } as const;
 
 /** Nama fungsi RPC yang tersedia (security definer di sisi database). */
@@ -123,4 +124,6 @@ export const RPC = {
   createQrisRequest: 'rpc_create_qris_request',
   cancelQrisRequest: 'rpc_cancel_qris_request',
   linkCustomerAccount: 'rpc_link_customer_account',
+  createCustomerInvite: 'rpc_create_customer_invite',
+  revokeCustomerInvite: 'rpc_revoke_customer_invite',
 } as const;

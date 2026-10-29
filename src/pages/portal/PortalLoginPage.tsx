@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, LogIn, Wallet } from 'lucide-react';
@@ -103,7 +103,10 @@ export function PortalLoginPage(): JSX.Element {
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              Belum punya akun? Hubungi admin usaha tempat Anda mengajukan kredit.
+              Punya kode undangan dari admin?{' '}
+              <Link to="/portal/daftar" className="text-primary hover:underline">
+                Daftar akun portal
+              </Link>
             </p>
           </form>
         </CardContent>

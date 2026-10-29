@@ -58,6 +58,9 @@ const PortalHomePage = lazy(() =>
 const PortalHistoryPage = lazy(() =>
   import('@/pages/portal/PortalHistoryPage').then((m) => ({ default: m.PortalHistoryPage })),
 );
+const PortalSignupPage = lazy(() =>
+  import('@/pages/portal/PortalSignupPage').then((m) => ({ default: m.PortalSignupPage })),
+);
 
 function RouteFallback(): JSX.Element {
   return (
@@ -127,6 +130,15 @@ export function App(): JSX.Element {
                   element={
                     <PortalPublicOnlyRoute>
                       <PortalLoginPage />
+                    </PortalPublicOnlyRoute>
+                  }
+                />
+
+                <Route
+                  path="/portal/daftar"
+                  element={
+                    <PortalPublicOnlyRoute>
+                      <PortalSignupPage />
                     </PortalPublicOnlyRoute>
                   }
                 />

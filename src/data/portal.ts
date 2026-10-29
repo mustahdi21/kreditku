@@ -22,7 +22,7 @@ import type {
   InstallmentDetailRow,
   PaymentRow,
 } from '@/data/types';
-import { toAppError } from '@/lib/errors';
+import { AppError, toAppError } from '@/lib/errors';
 import { toDynamicQris } from '@/core/qris';
 
 /** Satu permintaan pembayaran QRIS milik pelanggan. */
@@ -255,4 +255,67 @@ export function totalOutstanding(rows: readonly InstallmentDetailRow[]): {
 /** Tanggal hari ini dalam bentuk ISO, dipakai untuk menandai keterlambatan. */
 export function isOverdue(row: InstallmentDetailRow): boolean {
   return (row.late_days ?? 0) > 0 && (row.outstanding ?? 0) > 0 && row.due_date < todayIso();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pendaftaran akun portal                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface InvitePreview {
+  readonly customerName: string | null;
+  readonly expiresAt: string | null;
+}
+
+export interface SignupInput {
+  readonly code: string;
+  readonly fullName: string;
+  readonly email: string;
+  readonly password: string;
+}
+
+interface SignupResponse {
+  readonly ok?: boolean;
+  readonly mode?: 'PERIKSA' | 'DAFTAR';
+  readonly message?: string;
+  readonly customer_name?: string | null;
+  readonly expires_at?: string | null;
+}
+
+/**
+ * Memanggil Edge Function customer-signup.
+ *
+ * Fungsi itu menjawab galat sebagai nilai beserta status HTTP 4xx, sedangkan
+ * supabase-js menggantinya dengan pesan umum "Edge Function returned a non-2xx
+ * status code". Karena itu badan balasannya dibaca langsung dari konteks galat;
+ * tanpa itu pendaftar hanya melihat pesan umum dan tidak tahu apa yang salah.
+ */
+async function invokeCustomerSignup(body: Record<string, unknown>): Promise<SignupResponse> {
+  const { data, error } = await supabase().functions.invoke('customer-signup', { body });
+
+  if (error) {
+    const context = (error as { context?: { json?: () => Promise<unknown> } }).context;
+    if (context && typeof context.json === 'function') {
+      try {
+        const parsed = (await context.json()) as SignupResponse | null;
+        if (parsed?.message) throw new AppError('VALIDATION', parsed.message);
+      } catch (inner) {
+        if (inner instanceof AppError) throw inner;
+      }
+    }
+    throw toAppError(error);
+  }
+
+  return (data ?? {}) as SignupResponse;
+}
+
+/** Memeriksa kode undangan; tidak mengubah apa pun. */
+export async function checkInviteCode(code: string): Promise<InvitePreview> {
+  const hasil = await invokeCustomerSignup({ code });
+  return { customerName: hasil.customer_name ?? null, expiresAt: hasil.expires_at ?? null };
+}
+
+/** Mendaftarkan akun portal memakai kode undangan. */
+export async function registerCustomerAccount(input: SignupInput): Promise<{ customerName: string | null }> {
+  const hasil = await invokeCustomerSignup({ ...input });
+  return { customerName: hasil.customer_name ?? null };
 }

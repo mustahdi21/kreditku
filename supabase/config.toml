@@ -73,6 +73,11 @@ verify_jwt = true
 [functions.qris-confirm]
 verify_jwt = false
 
+# Calon pelanggan belum punya akun saat mendaftar, sehingga permintaannya tidak
+# membawa sesi. Penjaganya adalah kode undangan yang hanya dapat dibuat admin.
+[functions.customer-signup]
+verify_jwt = false
+
 [functions.reminder-dispatch]
 verify_jwt = false
 

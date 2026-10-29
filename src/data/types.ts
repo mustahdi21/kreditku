@@ -47,6 +47,8 @@ export interface CustomerRow {
   status: CustomerStatus;
   remind_enabled: boolean;
   archived_at: string | null;
+  /** Akun login pemilik baris ini; kosong berarti belum punya akun portal. */
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 }

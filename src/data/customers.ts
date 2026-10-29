@@ -259,3 +259,47 @@ export function useOpenContracts(customerId?: string) {
     queryFn: () => fetchOpenContracts(customerId),
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Akun portal pelanggan                                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface CustomerInviteResult {
+  readonly invite_id: string;
+  readonly code: string;
+  readonly expires_at: string;
+  readonly valid_days: number;
+}
+
+/**
+ * Membuat kode undangan pendaftaran portal untuk satu pelanggan.
+ *
+ * Kode dikembalikan hanya sekali di sini — admin menyampaikannya langsung
+ * kepada pelanggan (mis. lewat WhatsApp). Kode baru otomatis mencabut kode lama
+ * yang belum dipakai, sehingga tidak pernah ada dua kode aktif untuk satu
+ * pelanggan.
+ */
+export async function createCustomerInvite(customerId: string, validDays = 7): Promise<CustomerInviteResult> {
+  const result = await supabase().rpc(RPC.createCustomerInvite, {
+    p_customer_id: customerId,
+    p_valid_days: validDays,
+  });
+  if (result.error) throw toAppError(result.error);
+  return result.data as CustomerInviteResult;
+}
+
+export async function revokeCustomerInvite(inviteId: string): Promise<void> {
+  const result = await supabase().rpc(RPC.revokeCustomerInvite, { p_invite_id: inviteId });
+  if (result.error) throw toAppError(result.error);
+}
+
+export function useCreateCustomerInvite() {
+  return useMutation({
+    mutationFn: async (params: { customerId: string; validDays?: number }) =>
+      createCustomerInvite(params.customerId, params.validDays ?? 7),
+  });
+}
+
+export function useRevokeCustomerInvite() {
+  return useMutation({ mutationFn: async (inviteId: string) => revokeCustomerInvite(inviteId) });
+}
