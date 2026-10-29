@@ -8,11 +8,12 @@
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Archive, ArrowLeft, Lock, Pencil, Wallet } from 'lucide-react';
+import { Archive, ArrowLeft, Lock, Pencil, Trash2, Wallet } from 'lucide-react';
 import { useAuth } from '@/auth/AuthProvider';
 import { CustomerPortalAccountCard } from '@/components/customer/CustomerPortalAccountCard';
+import { useDeleteCustomer } from '@/data/customers';
 import {
   fetchCustomerApplications,
   fetchCustomerPayments,
@@ -83,10 +84,13 @@ export default function CustomerDetailPage(): JSX.Element {
   const { customerId } = useParams<{ customerId: string }>();
   const { can } = useAuth();
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const customerQuery = useCustomer(customerId);
+  const navigate = useNavigate();
   const contractsQuery = useCustomerContracts(customerId);
   const archiveMutation = useArchiveCustomer();
+  const deleteMutation = useDeleteCustomer();
 
   const applicationsQuery = useQuery({
     queryKey: ['customer-applications', customerId ?? ''],
@@ -341,6 +345,24 @@ export default function CustomerDetailPage(): JSX.Element {
   const isArchived = customer.status === 'ARCHIVED';
   const canManage = can('customers.manage');
   const canCollect = can('payments.create');
+  const canConfigure = can('settings.manage');
+  // Server tetap memutuskan; ini hanya agar tombolnya tidak menawarkan sesuatu
+  // yang pasti ditolak, dan agar alasannya terbaca sebelum diklik.
+  const bisaDihapus = (customer.total_contracts ?? 0) === 0;
+
+  const onDelete = async () => {
+    try {
+      const hasil = await deleteMutation.mutateAsync(customer.id);
+      notifySuccess(
+        'Pelanggan dihapus permanen',
+        `${hasil.full_name} (${hasil.customer_number}) sudah tidak ada. Tindakan ini tercatat pada audit log.`,
+      );
+      setDeleteOpen(false);
+      navigate('/app/customers', { replace: true });
+    } catch (error) {
+      notifyError(error, 'Gagal menghapus pelanggan');
+    }
+  };
 
   const onArchive = async () => {
     try {
@@ -385,6 +407,22 @@ export default function CustomerDetailPage(): JSX.Element {
               <Button variant="outline" onClick={() => setArchiveOpen(true)} disabled={isArchived}>
                 <Archive aria-hidden />
                 {isArchived ? 'Sudah Diarsipkan' : 'Arsipkan'}
+              </Button>
+            ) : null}
+            {canConfigure ? (
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+                disabled={!bisaDihapus}
+                title={
+                  bisaDihapus
+                    ? 'Hapus permanen pelanggan ini'
+                    : 'Hanya pelanggan tanpa kontrak dan tanpa pengajuan yang dapat dihapus permanen'
+                }
+              >
+                <Trash2 aria-hidden />
+                Hapus permanen
               </Button>
             ) : null}
           </>
@@ -550,6 +588,24 @@ export default function CustomerDetailPage(): JSX.Element {
           />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Hapus pelanggan permanen?"
+        description={
+          `Data ${customer.full_name} (${customer.customer_number}) akan dihapus dan TIDAK dapat dikembalikan. ` +
+          'Tindakan ini hanya berlaku untuk pelanggan yang belum punya kontrak dan pengajuan, dan akan tercatat pada audit log. ' +
+          'Bila pelanggan ini pernah bertransaksi, gunakan Arsipkan agar riwayatnya tetap tersimpan.'
+        }
+        confirmLabel="Hapus permanen"
+        cancelLabel="Batal"
+        destructive
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          void onDelete();
+        }}
+      />
 
       <ConfirmDialog
         open={archiveOpen}

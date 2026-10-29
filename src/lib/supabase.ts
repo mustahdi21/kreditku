@@ -123,6 +123,7 @@ export const RPC = {
   portalQrisPayload: 'rpc_portal_qris_payload',
   createQrisRequest: 'rpc_create_qris_request',
   cancelQrisRequest: 'rpc_cancel_qris_request',
+  deleteCustomer: 'rpc_delete_customer',
   linkCustomerAccount: 'rpc_link_customer_account',
   createCustomerInvite: 'rpc_create_customer_invite',
   revokeCustomerInvite: 'rpc_revoke_customer_invite',

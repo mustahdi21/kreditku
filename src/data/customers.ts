@@ -303,3 +303,42 @@ export function useCreateCustomerInvite() {
 export function useRevokeCustomerInvite() {
   return useMutation({ mutationFn: async (inviteId: string) => revokeCustomerInvite(inviteId) });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Penghapusan permanen pelanggan                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface DeleteCustomerResult {
+  readonly customer_id: string;
+  readonly customer_number: string;
+  readonly full_name: string;
+  readonly had_portal_account: boolean;
+}
+
+/**
+ * Menghapus pelanggan secara PERMANEN.
+ *
+ * Hanya berhasil untuk pelanggan yang belum punya kontrak dan belum punya
+ * pengajuan. Untuk pelanggan yang sudah punya riwayat, server menolaknya dengan
+ * pesan yang menjelaskan agar memakai Arsipkan — penghapusan permanen tidak
+ * disediakan untuk data keuangan, dan trigger di basis data ikut menjaganya
+ * meskipun fungsi ini dipanggil dengan cara lain.
+ */
+export async function deleteCustomer(customerId: string): Promise<DeleteCustomerResult> {
+  const result = await supabase().rpc(RPC.deleteCustomer, { p_customer_id: customerId });
+  if (result.error) throw toAppError(result.error);
+  return result.data as DeleteCustomerResult;
+}
+
+export function useDeleteCustomer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (customerId: string) => deleteCustomer(customerId),
+    onSuccess: () => {
+      // Awalan 'customers' mencakup seluruh daftar dengan penyaring apa pun,
+      // sehingga baris yang baru dihapus tidak tertinggal di layar.
+      void queryClient.invalidateQueries({ queryKey: ['customers'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
