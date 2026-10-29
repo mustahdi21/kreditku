@@ -12,6 +12,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Archive, ArrowLeft, Lock, Pencil, Wallet } from 'lucide-react';
 import { useAuth } from '@/auth/AuthProvider';
+import { CustomerPortalAccountCard } from '@/components/customer/CustomerPortalAccountCard';
 import {
   fetchCustomerApplications,
   fetchCustomerPayments,
@@ -502,6 +503,8 @@ export default function CustomerDetailPage(): JSX.Element {
                 )}
               </CardContent>
             </Card>
+
+            {canManage ? <CustomerPortalAccountCard customer={customer} /> : null}
           </div>
         </TabsContent>
 
