@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { crc16Ccitt, parseQris, verifyQrisCrc } from '@/core/qris';
 import {
   buildPaymentQrPayload,
+  contractOutstanding,
   formatRupiah,
   isOverdue,
   payableInstallments,
@@ -124,6 +125,31 @@ describe('totalOutstanding', () => {
 
   it('mengembalikan nol untuk daftar kosong', () => {
     expect(totalOutstanding([])).toEqual({ pokok: 0, denda: 0, total: 0 });
+  });
+});
+
+describe('contractOutstanding — batas nominal per kontrak', () => {
+  it('hanya menghitung cicilan kontrak yang diminta', () => {
+    const rows = [
+      cicilan({ id: 'a1', contract_id: 'c-1', outstanding: 550000, penalty_outstanding: 0 }),
+      cicilan({ id: 'a2', contract_id: 'c-1', outstanding: 300000, penalty_outstanding: 25000 }),
+      cicilan({ id: 'b1', contract_id: 'c-2', outstanding: 900000, penalty_outstanding: 0 }),
+    ];
+    expect(contractOutstanding(rows, 'c-1')).toEqual({ pokok: 850000, denda: 25000, total: 875000 });
+    expect(contractOutstanding(rows, 'c-2')).toEqual({ pokok: 900000, denda: 0, total: 900000 });
+  });
+
+  it('total seluruh tagihan tetap berbeda dari total satu kontrak', () => {
+    const rows = [
+      cicilan({ id: 'a1', contract_id: 'c-1', outstanding: 550000 }),
+      cicilan({ id: 'b1', contract_id: 'c-2', outstanding: 900000 }),
+    ];
+    expect(totalOutstanding(rows).total).toBe(1450000);
+    expect(contractOutstanding(rows, 'c-1').total).toBe(550000);
+  });
+
+  it('mengembalikan nol untuk kontrak yang tidak ada', () => {
+    expect(contractOutstanding([], 'c-9')).toEqual({ pokok: 0, denda: 0, total: 0 });
   });
 });
 

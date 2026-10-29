@@ -23,6 +23,7 @@ import {
 } from '@/components/ui';
 import { QrisPaymentDialog } from '@/components/portal/QrisPaymentDialog';
 import {
+  contractOutstanding,
   formatRupiah,
   isOverdue,
   payableInstallments,
@@ -35,6 +36,10 @@ interface TargetBayar {
   readonly contractId: string;
   readonly installmentId: string;
   readonly label: string;
+  /** Tagihan cicilan ini, dipakai sebagai nominal awal di dialog. */
+  readonly defaultAmount: number;
+  /** Seluruh tagihan kontrak, menjadi batas atas yang diizinkan server. */
+  readonly maxAmount: number;
 }
 
 export function PortalHomePage(): JSX.Element {
@@ -163,6 +168,8 @@ export function PortalHomePage(): JSX.Element {
                         contractId: baris.contract_id,
                         installmentId: baris.id,
                         label: String(baris.installment_number),
+                        defaultAmount: total,
+                        maxAmount: contractOutstanding(semua, baris.contract_id).total,
                       })
                     }
                   >
@@ -188,6 +195,8 @@ export function PortalHomePage(): JSX.Element {
           contractId={target.contractId}
           installmentId={target.installmentId}
           installmentLabel={target.label}
+          defaultAmount={target.defaultAmount}
+          maxAmount={target.maxAmount}
         />
       ) : null}
     </div>

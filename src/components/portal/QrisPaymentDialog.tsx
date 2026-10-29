@@ -1,34 +1,36 @@
 /**
  * QrisPaymentDialog.tsx — Menampilkan QR pembayaran untuk satu cicilan.
  *
- * ALUR
- *   1. Permintaan pembayaran dibuat di server; nominal dihitung server dari
- *      tagihan yang benar-benar terbuka, bukan dikirim dari sini.
- *   2. QR statis merchant diubah menjadi dinamis dengan nominal itu, sehingga
- *      pelanggan tidak perlu mengetik jumlahnya sendiri.
- *   3. Pelanggan memindai QR tersebut, atau menyimpan gambarnya lalu membukanya
- *      di aplikasi bank — portal ini biasanya dibuka dari ponsel yang sama, jadi
- *      tombol simpan gambar bukan sekadar pelengkap.
+ * DUA TAHAP, dan urutannya mengikuti aturan di server: nominal ditentukan lebih
+ * dulu, baru QR dibuat. Nominal awal diisi sebesar tagihan cicilan, tetapi
+ * pelanggan boleh mengubahnya — termasuk membayar sebagian.
+ *
+ * Batasnya ditegakkan server, bukan di sini: rpc_create_qris_request menolak
+ * nominal nol, negatif, atau melebihi total tagihan kontrak. Pemeriksaan di
+ * layar ini hanya supaya pelanggan tahu lebih awal, bukan sebagai pengaman.
  *
  * Yang TIDAK dilakukan di sini: mencatat pembayaran. Pencatatan terjadi ketika
  * notifikasi pembayaran masuk dan dicocokkan server (Edge Function qris-confirm),
- * atau ketika kasir mencatatnya manual. Dialog ini hanya menampilkan tagihan.
+ * atau ketika kasir mencatatnya manual.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { AlertTriangle, Check, Copy, Download, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Download, PenLine, RefreshCw } from 'lucide-react';
 import {
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   Separator,
   Spinner,
 } from '@/components/ui';
+import { MoneyInput } from '@/components/ui/form';
 import { errorMessage } from '@/lib/errors';
+import type { Rupiah } from '@/lib/money';
 import {
   buildPaymentQrPayload,
   formatRupiah,
@@ -43,6 +45,10 @@ interface QrisPaymentDialogProps {
   readonly contractId: string;
   readonly installmentId: string;
   readonly installmentLabel: string;
+  /** Tagihan cicilan ini; dipakai sebagai nominal awal. */
+  readonly defaultAmount: number;
+  /** Seluruh tagihan kontrak; batas atas yang diizinkan server. */
+  readonly maxAmount: number;
 }
 
 function formatExpiry(value: string): string {
@@ -57,37 +63,57 @@ export function QrisPaymentDialog({
   contractId,
   installmentId,
   installmentLabel,
+  defaultAmount,
+  maxAmount,
 }: QrisPaymentDialogProps): JSX.Element {
   const merchant = useMerchantQris();
   const createRequest = useCreateQrisRequest();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const [nominal, setNominal] = useState<Rupiah | null>(null);
   const [permintaan, setPermintaan] = useState<QrisRequestResult | null>(null);
   const [galat, setGalat] = useState<string | null>(null);
+  const [galatNominal, setGalatNominal] = useState<string | null>(null);
   const [tersalin, setTersalin] = useState(false);
 
-  const muatPermintaan = async (): Promise<void> => {
+  // Setiap dibuka, nominal kembali ke tagihan cicilan. Menutup dialog tidak
+  // membatalkan permintaan yang sudah dibuat, sehingga QR yang terlanjur
+  // ditampilkan tetap dapat dibayar.
+  useEffect(() => {
+    if (!open) {
+      setPermintaan(null);
+      setGalat(null);
+      setGalatNominal(null);
+      setTersalin(false);
+      return;
+    }
+    setNominal(defaultAmount as Rupiah);
+  }, [open, defaultAmount, installmentId]);
+
+  const nilai = Number(nominal ?? 0);
+
+  const buatPermintaan = async (): Promise<void> => {
     setGalat(null);
+    setGalatNominal(null);
+
+    if (!Number.isFinite(nilai) || nilai <= 0) {
+      setGalatNominal('Nominal harus lebih besar dari nol.');
+      return;
+    }
+    if (nilai > maxAmount) {
+      setGalatNominal(
+        `Nominal melebihi total tagihan kontrak (${formatRupiah(maxAmount)}). Kurangi nominalnya atau pilih Bayar seluruh tagihan.`,
+      );
+      return;
+    }
+
     try {
-      const hasil = await createRequest.mutateAsync({ contractId, installmentId });
+      const hasil = await createRequest.mutateAsync({ contractId, installmentId, amount: nilai });
       setPermintaan(hasil);
     } catch (error) {
       setGalat(errorMessage(error));
     }
   };
-
-  useEffect(() => {
-    if (!open) {
-      setPermintaan(null);
-      setGalat(null);
-      setTersalin(false);
-      return;
-    }
-    void muatPermintaan();
-    // Permintaan dibuat sekali setiap dialog dibuka; menutup dialog tidak
-    // membatalkannya, sehingga QR yang sudah ditampilkan tetap dapat dibayar.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, contractId, installmentId]);
 
   let payloadQr: string | null = null;
   let galatQr: string | null = null;
@@ -119,13 +145,19 @@ export function QrisPaymentDialog({
     }
   };
 
+  const sisaSetelahBayar = Math.max(maxAmount - nilai, 0);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="default">
         <DialogHeader>
-          <DialogTitle>Bayar cicilan {installmentLabel}</DialogTitle>
+          <DialogTitle>
+            {permintaan ? `Bayar cicilan ${installmentLabel}` : `Nominal pembayaran cicilan ${installmentLabel}`}
+          </DialogTitle>
           <DialogDescription>
-            Pindai QR di bawah dengan aplikasi bank atau dompet digital Anda. Nominalnya sudah terisi otomatis.
+            {permintaan
+              ? 'Pindai QR di bawah dengan aplikasi bank atau dompet digital Anda. Nominalnya sudah terisi otomatis.'
+              : 'Nominal awal sudah diisi sebesar tagihan cicilan ini. Anda boleh mengubahnya, termasuk membayar sebagian.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -136,17 +168,72 @@ export function QrisPaymentDialog({
               Permintaan pembayaran gagal dibuat
             </p>
             <p className="text-muted-foreground">{galat}</p>
-            <Button variant="outline" size="sm" onClick={() => void muatPermintaan()}>
-              <RefreshCw aria-hidden />
-              Coba lagi
-            </Button>
           </div>
         ) : null}
 
-        {!permintaan && !galat ? (
+        {/* Tahap 1: menentukan nominal */}
+        {!permintaan ? (
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Tagihan cicilan ini</span>
+                <span className="tabular-nums">{formatRupiah(defaultAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Seluruh tagihan kontrak</span>
+                <span className="tabular-nums">{formatRupiah(maxAmount)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="qris-nominal" className="text-sm font-medium">
+                Nominal yang akan dibayar
+              </label>
+              <MoneyInput id="qris-nominal" value={nominal} onChange={setNominal} max={maxAmount as Rupiah} />
+              {galatNominal ? <p className="text-sm text-destructive">{galatNominal}</p> : null}
+              {nilai > 0 && nilai <= maxAmount ? (
+                <p className="text-xs text-muted-foreground">
+                  Sisa tagihan kontrak setelah pembayaran ini: {formatRupiah(sisaSetelahBayar)}
+                  {nilai < defaultAmount ? ' — cicilan ini akan tercatat sebagian.' : ''}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setNominal(defaultAmount as Rupiah)}>
+                Bayar cicilan ini ({formatRupiah(defaultAmount)})
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setNominal(Math.round(defaultAmount / 2) as Rupiah)}
+              >
+                Setengahnya
+              </Button>
+              {maxAmount > defaultAmount ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => setNominal(maxAmount as Rupiah)}>
+                  Seluruh tagihan ({formatRupiah(maxAmount)})
+                </Button>
+              ) : null}
+            </div>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Batal
+              </Button>
+              <Button className="gap-2" loading={createRequest.isPending} onClick={() => void buatPermintaan()}>
+                <PenLine aria-hidden />
+                Buat QR pembayaran
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : null}
+
+        {/* Tahap 2: QR */}
+        {permintaan && !payloadQr && !galatQr ? (
           <div className="flex flex-col items-center gap-3 py-8">
-            <Spinner label="Menyiapkan tagihan" />
-            <p className="text-xs text-muted-foreground">Nominal sedang dihitung di server…</p>
+            <Spinner label="Menyiapkan QR" />
           </div>
         ) : null}
 
@@ -179,7 +266,8 @@ export function QrisPaymentDialog({
             <div className="space-y-1 text-center">
               <p className="text-2xl font-semibold tabular-nums">{formatRupiah(permintaan.amount)}</p>
               <p className="text-xs text-muted-foreground">
-                Kontrak {permintaan.contract_number} · jatuh tempo {permintaan.due_date}
+                Kontrak {permintaan.contract_number}
+                {permintaan.amount < defaultAmount ? ' · pembayaran sebagian' : ''}
               </p>
             </div>
 
@@ -209,9 +297,9 @@ export function QrisPaymentDialog({
                 <Download aria-hidden />
                 Simpan gambar QR
               </Button>
-              <Button variant="secondary" className="gap-2 sm:flex-1" onClick={() => void muatPermintaan()}>
+              <Button variant="secondary" className="gap-2 sm:flex-1" onClick={() => setPermintaan(null)}>
                 <RefreshCw aria-hidden />
-                Perbarui tagihan
+                Ubah nominal
               </Button>
             </div>
 

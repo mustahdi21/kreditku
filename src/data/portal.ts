@@ -51,6 +51,7 @@ export interface QrisRequestResult {
   readonly due_date: string;
   readonly expires_at: string;
   readonly lanjutan: boolean;
+  readonly total_outstanding: number;
 }
 
 /** Nominal berupa bilangan bulat rupiah; server tidak menerima pecahan untuk cicilan. */
@@ -139,10 +140,15 @@ export async function fetchMerchantQris(): Promise<{ payload: string; merchantNa
  * Nominal TIDAK dikirim dari sini: server yang menghitungnya dari tagihan yang
  * benar-benar terbuka. Klien hanya menyebutkan cicilan mana yang ingin dibayar.
  */
-export async function createQrisRequest(contractId: string, installmentId: string | null): Promise<QrisRequestResult> {
+export async function createQrisRequest(
+  contractId: string,
+  installmentId: string | null,
+  amount?: number,
+): Promise<QrisRequestResult> {
   const result = await supabase().rpc(RPC.createQrisRequest, {
     p_contract_id: contractId,
     p_installment_id: installmentId,
+    p_amount: amount ?? null,
   });
   if (result.error) throw toAppError(result.error);
   return result.data as QrisRequestResult;
@@ -202,8 +208,8 @@ export function useMerchantQris() {
 export function useCreateQrisRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { contractId: string; installmentId: string | null }) =>
-      createQrisRequest(params.contractId, params.installmentId),
+    mutationFn: async (params: { contractId: string; installmentId: string | null; amount?: number }) =>
+      createQrisRequest(params.contractId, params.installmentId, params.amount),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: portalKeys.requests });
     },
@@ -250,6 +256,21 @@ export function totalOutstanding(rows: readonly InstallmentDetailRow[]): {
     denda += row.penalty_outstanding ?? 0;
   }
   return { pokok, denda, total: pokok + denda };
+}
+
+/**
+ * Total tagihan terbuka pada SATU kontrak saja.
+ *
+ * Dipakai sebagai batas atas nominal di portal. Batas yang ditegakkan server
+ * adalah tagihan kontrak yang bersangkutan, bukan seluruh tagihan pelanggan —
+ * pelanggan dengan dua kontrak akan mendapat angka yang terlalu longgar bila
+ * memakai total keseluruhan.
+ */
+export function contractOutstanding(
+  rows: readonly InstallmentDetailRow[],
+  contractId: string,
+): { readonly pokok: number; readonly denda: number; readonly total: number } {
+  return totalOutstanding(rows.filter((row) => row.contract_id === contractId));
 }
 
 /** Tanggal hari ini dalam bentuk ISO, dipakai untuk menandai keterlambatan. */
