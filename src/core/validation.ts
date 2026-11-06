@@ -23,6 +23,8 @@ import {
   REMINDER_CHANNELS,
 } from '@/core/types';
 import { PENALTY_PERCENT_BASES } from '@/core/penalties';
+import { parseQris } from '@/core/qris';
+import { errorMessage } from '@/lib/errors';
 
 const isoDate = z
   .string()
@@ -368,6 +370,44 @@ export const integrationSettingsSchema = z.object({
     .min(1, 'Pilih minimal satu jadwal pengingat'),
   reminderChannels: z.array(z.enum(REMINDER_CHANNELS)).min(1, 'Pilih minimal satu kanal pengingat'),
   reminderSimulationMode: z.boolean().default(true),
+
+  // QRIS merchant. Payload statis dari QR di meja kas; disimpan apa adanya
+  // karena portal yang mengubahnya menjadi QR dinamis saat pelanggan membayar.
+  qrisStaticPayload: z.string().trim().max(512).optional().nullable(),
+  qrisNotifMarker: z.string().trim().max(160).optional().nullable(),
+}).superRefine((data, ctx) => {
+  const payload = (data.qrisStaticPayload ?? '').trim();
+  if (payload === '') return;
+
+  // Payload yang tidak sah tidak boleh tersimpan: portal akan menolak
+  // menampilkan QR, dan pelanggan melihat kegagalan alih-alih dapat membayar.
+  let parsed: ReturnType<typeof parseQris>;
+  try {
+    parsed = parseQris(payload);
+  } catch (error) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['qrisStaticPayload'],
+      message: errorMessage(error),
+    });
+    return;
+  }
+
+  if (!parsed.crcValid) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['qrisStaticPayload'],
+      message: 'CRC payload tidak sah. Kemungkinan tersalin tidak lengkap — salin ulang seluruh teks dari QR merchant.',
+    });
+  }
+
+  if (parsed.hasAmount) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['qrisStaticPayload'],
+      message: 'Payload ini sudah memuat nominal. Gunakan QR statis merchant (yang tidak memuat nominal).',
+    });
+  }
 });
 export type IntegrationSettingsInput = z.infer<typeof integrationSettingsSchema>;
 

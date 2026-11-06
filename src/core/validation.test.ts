@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { crc16Ccitt } from '@/core/qris';
 import {
   applicationDecisionSchema,
   creditApplicationSchema,
   creditSimulationSchema,
   customerSchema,
   formatZodError,
+  integrationSettingsSchema,
   inviteUserSchema,
   loginSchema,
   mapZodErrors,
@@ -217,5 +219,102 @@ describe('validation — penambahan anggota', () => {
     expect(inviteUserSchema.safeParse({ ...dasar, email: 'bukan-email' }).success).toBe(false);
     expect(inviteUserSchema.safeParse({ ...dasar, fullName: 'A' }).success).toBe(false);
     expect(inviteUserSchema.safeParse({ ...dasar, role: 'PEMILIK' }).success).toBe(false);
+  });
+});
+
+/** Menyusun payload QRIS statis yang sah, mengikuti aturan EMVCo. */
+function qrisStatis(tags: ReadonlyArray<readonly [string, string]>): string {
+  const body = tags.map(([tag, value]) => `${tag}${value.length.toString().padStart(2, '0')}${value}`).join('');
+  const withTemplate = `${body}6304`;
+  return `${withTemplate}${crc16Ccitt(withTemplate)}`;
+}
+
+const QRIS_CONTOH = qrisStatis([
+  ['00', '01'],
+  ['01', '11'],
+  ['53', '360'],
+  ['58', 'ID'],
+  ['59', 'TOKO CONTOH'],
+  ['60', 'JAKARTA'],
+]);
+
+const INTEGRASI_DASAR = {
+  whatsappEnabled: false,
+  whatsappProvider: 'WAHASENDER' as const,
+  whatsappSenderName: null,
+  emailEnabled: false,
+  emailFromName: null,
+  emailFromAddress: null,
+  reminderOffsets: ['D_MINUS_3'] as const,
+  reminderChannels: ['WHATSAPP'] as const,
+  reminderSimulationMode: true,
+};
+
+describe('validation — pengaturan QRIS merchant', () => {
+  it('menerima integrasi tanpa payload QRIS', () => {
+    expect(integrationSettingsSchema.safeParse(INTEGRASI_DASAR).success).toBe(true);
+    expect(
+      integrationSettingsSchema.safeParse({ ...INTEGRASI_DASAR, qrisStaticPayload: '   ' }).success,
+    ).toBe(true);
+  });
+
+  it('menerima payload QRIS statis yang sah', () => {
+    const hasil = integrationSettingsSchema.safeParse({
+      ...INTEGRASI_DASAR,
+      qrisStaticPayload: QRIS_CONTOH,
+      qrisNotifMarker: 'pembayaran via qris statis diterima',
+    });
+    expect(hasil.success).toBe(true);
+  });
+
+  it('menolak payload yang CRC-nya rusak', () => {
+    const rusak = `${QRIS_CONTOH.slice(0, -4)}0000`;
+    const hasil = integrationSettingsSchema.safeParse({ ...INTEGRASI_DASAR, qrisStaticPayload: rusak });
+    expect(hasil.success).toBe(false);
+    if (!hasil.success) {
+      expect(hasil.error.issues[0]?.message).toMatch(/CRC payload tidak sah/);
+    }
+  });
+
+  it('menolak payload yang sudah memuat nominal', () => {
+    const dinamis = qrisStatis([
+      ['00', '01'],
+      ['01', '12'],
+      ['53', '360'],
+      ['54', '550000'],
+      ['59', 'TOKO CONTOH'],
+    ]);
+    const hasil = integrationSettingsSchema.safeParse({ ...INTEGRASI_DASAR, qrisStaticPayload: dinamis });
+    expect(hasil.success).toBe(false);
+    if (!hasil.success) {
+      expect(hasil.error.issues[0]?.message).toMatch(/sudah memuat nominal/);
+    }
+  });
+
+  it('menolak payload yang tidak dapat diurai', () => {
+    const hasil = integrationSettingsSchema.safeParse({
+      ...INTEGRASI_DASAR,
+      qrisStaticPayload: '0005ab',
+    });
+    expect(hasil.success).toBe(false);
+  });
+
+  it('menolak payload yang terlalu panjang', () => {
+    const hasil = integrationSettingsSchema.safeParse({
+      ...INTEGRASI_DASAR,
+      qrisStaticPayload: '0'.repeat(600),
+    });
+    expect(hasil.success).toBe(false);
+  });
+
+  it('mempertahankan penanda notifikasi tanpa mengubah isinya', () => {
+    const hasil = integrationSettingsSchema.safeParse({
+      ...INTEGRASI_DASAR,
+      qrisNotifMarker: '  qris masuk  ',
+    });
+    expect(hasil.success).toBe(true);
+    if (hasil.success) {
+      expect(hasil.data.qrisNotifMarker).toBe('qris masuk');
+    }
   });
 });

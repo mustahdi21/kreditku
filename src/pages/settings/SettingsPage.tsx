@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   Building2,
   FileText,
+  CheckCircle2,
   Hash,
   Info,
   Lock,
@@ -36,6 +37,8 @@ import {
   Trash2,
   Wallet,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { parseQris } from '@/core/qris';
 import { PageHeader } from '@/components/layout/AppShell';
 import { DetailRow, ReminderChannelBadge } from '@/components/common/domain';
 import { errorMessage } from '@/lib/errors';
@@ -72,6 +75,7 @@ import {
   Skeleton,
   SwitchRow,
   Tabs,
+  Separator,
   Textarea,
   Dialog,
   DialogContent,
@@ -1120,8 +1124,57 @@ function PenaltySection({ settings }: { settings: AppSettingsRow }): JSX.Element
 }
 
 /* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
 /* 5. Integrasi & pengingat                                                   */
 /* -------------------------------------------------------------------------- */
+
+type PemeriksaanQris = { readonly level: 'ok' | 'warning' | 'error'; readonly message: string };
+
+/**
+ * Memeriksa payload QRIS sebelum disimpan.
+ *
+ * Pemeriksaan ini penting karena payload yang salah tidak menimbulkan galat di
+ * halaman ini — kegagalannya baru muncul di portal pelanggan, saat mereka tidak
+ * bisa membayar. Menangkapnya di sini berarti admin melihat sebabnya langsung di
+ * tempat ia menempelkan teksnya.
+ *
+ * Dua hal yang ditolak: CRC yang tidak sah (tanda teks tersalin tidak lengkap),
+ * dan payload yang sudah memuat nominal (berarti yang tersalin bukan QR statis
+ * merchant). Satu hal yang hanya diperingatkan: CRC sah tetapi tanpa penanda
+ * dinamis — masih dapat dipakai, hanya tidak lazim.
+ */
+function periksaPayloadQris(payload: string): PemeriksaanQris {
+  const teks = payload.trim();
+  if (teks === '') {
+    return {
+      level: 'warning',
+      message: 'Belum diatur. Portal pelanggan belum dapat menampilkan QR pembayaran sampai payload ini diisi.',
+    };
+  }
+
+  let parsed: ReturnType<typeof parseQris>;
+  try {
+    parsed = parseQris(teks);
+  } catch (error) {
+    return { level: 'error', message: errorMessage(error) };
+  }
+
+  if (!parsed.crcValid) {
+    return {
+      level: 'error',
+      message: 'CRC payload tidak sah. Kemungkinan teks tersalin tidak lengkap — salin ulang seluruhnya dari QR merchant.',
+    };
+  }
+  if (parsed.hasAmount) {
+    return { level: 'error', message: 'Payload ini sudah memuat nominal. Gunakan QR statis merchant.' };
+  }
+
+  const bagian = [parsed.merchantName, parsed.merchantCity].filter((nilai): nilai is string => Boolean(nilai));
+  return {
+    level: 'ok',
+    message: `Payload sah · ${bagian.length > 0 ? bagian.join(' · ') : 'nama merchant tidak tercantum'}`,
+  };
+}
 
 function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.Element {
   const { can, role } = useAuth();
@@ -1139,6 +1192,8 @@ function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.El
     reminderOffsets: [...integrations.reminder_offsets],
     reminderChannels: [...integrations.reminder_channels],
     reminderSimulationMode: integrations.reminder_simulation_mode,
+    qrisStaticPayload: integrations.qrisStaticPayload ?? '',
+    qrisNotifMarker: integrations.qrisNotifMarker ?? '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -1153,6 +1208,8 @@ function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.El
       reminderOffsets: [...integrations.reminder_offsets],
       reminderChannels: [...integrations.reminder_channels],
       reminderSimulationMode: integrations.reminder_simulation_mode,
+      qrisStaticPayload: integrations.qrisStaticPayload ?? '',
+      qrisNotifMarker: integrations.qrisNotifMarker ?? '',
     });
   }, [integrations]);
 
@@ -1174,10 +1231,18 @@ function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.El
             {integrations.reminder_channels.map((channel) => REMINDER_CHANNEL_LABELS[channel]).join(', ') || '-'}
           </DetailRow>
           <DetailRow label="Mode simulasi">{integrations.reminder_simulation_mode ? 'Aktif' : 'Nonaktif'}</DetailRow>
+          <DetailRow label="QRIS merchant">
+            {integrations.qrisStaticPayload ? 'Sudah diatur' : 'Belum diatur'}
+          </DetailRow>
+          <DetailRow label="Penanda notifikasi">
+            {integrations.qrisNotifMarker ? integrations.qrisNotifMarker : 'Belum diatur'}
+          </DetailRow>
         </dl>
       </LockedNotice>
     );
   }
+
+  const pemeriksaanQris = periksaPayloadQris(form.qrisStaticPayload);
 
   const handleSave = () => {
     const parsed = integrationSettingsSchema.safeParse({
@@ -1190,6 +1255,8 @@ function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.El
       reminderOffsets: form.reminderOffsets,
       reminderChannels: form.reminderChannels,
       reminderSimulationMode: form.reminderSimulationMode,
+      qrisStaticPayload: form.qrisStaticPayload.trim() === '' ? null : form.qrisStaticPayload.trim(),
+      qrisNotifMarker: form.qrisNotifMarker.trim() === '' ? null : form.qrisNotifMarker.trim(),
     });
 
     if (!parsed.success) {
@@ -1214,6 +1281,14 @@ function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.El
           reminder_offsets: data.reminderOffsets,
           reminder_channels: data.reminderChannels,
           reminder_simulation_mode: data.reminderSimulationMode,
+          // Disertakan eksplisit: rpc_update_settings menggabungkan objek
+          // integrations (integrations || payload), sehingga kunci yang tidak
+          // dikirim memang tidak terhapus — tetapi kunci yang dikirim ditimpa
+          // dengan nilai formulir. Mengirimkan keduanya membuat isi formulir
+          // menjadi satu-satunya penentu nilai QRIS, tanpa bergantung pada
+          // perilaku penggabungan.
+          qrisStaticPayload: data.qrisStaticPayload ?? null,
+          qrisNotifMarker: data.qrisNotifMarker ?? null,
         },
       },
       {
@@ -1377,6 +1452,71 @@ function IntegrationsSection({ settings }: { settings: AppSettingsRow }): JSX.El
         checked={form.reminderSimulationMode}
         onCheckedChange={(checked) => setForm({ ...form, reminderSimulationMode: checked })}
       />
+
+      <Separator />
+
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">QRIS merchant</h3>
+          <p className="text-xs text-muted-foreground">
+            Dua nilai ini yang menghubungkan portal pelanggan dengan uang yang masuk ke rekening usaha Anda.
+          </p>
+        </div>
+
+        <FormField
+          label="Payload QRIS statis"
+          htmlFor="integration-qris-payload"
+          error={errors.qrisStaticPayload}
+          hint="Tempel seluruh teks dari QR statis merchant Anda (QR yang dipajang di meja kas, tanpa nominal). Portal akan menambahkan nominalnya secara otomatis."
+        >
+          <Textarea
+            id="integration-qris-payload"
+            value={form.qrisStaticPayload}
+            onChange={(event) => setForm({ ...form, qrisStaticPayload: event.target.value })}
+            rows={4}
+            spellCheck={false}
+            placeholder="00020101021126..."
+            className="font-mono text-xs"
+          />
+        </FormField>
+
+        {pemeriksaanQris.level !== 'ok' ? (
+          <div
+            className={cn(
+              'rounded-md border p-3 text-sm',
+              pemeriksaanQris.level === 'error'
+                ? 'border-destructive/30 bg-destructive/5 text-destructive'
+                : 'border-warning/40 bg-warning/5 text-warning',
+            )}
+          >
+            <p className="flex items-center gap-2 font-medium">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              {pemeriksaanQris.message}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success">
+            <p className="flex items-center gap-2 font-medium">
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
+              {pemeriksaanQris.message}
+            </p>
+          </div>
+        )}
+
+        <FormField
+          label="Penanda notifikasi pembayaran"
+          htmlFor="integration-qris-marker"
+          error={errors.qrisNotifMarker}
+          hint="Potongan kata yang selalu muncul pada notifikasi pembayaran QRIS dari aplikasi bank Anda. Notifikasi yang tidak memuat kata ini akan diabaikan, tetapi tetap tersimpan untuk ditelusuri."
+        >
+          <Input
+            id="integration-qris-marker"
+            value={form.qrisNotifMarker}
+            onChange={(event) => setForm({ ...form, qrisNotifMarker: event.target.value })}
+            placeholder="mis. pembayaran via qris statis diterima"
+          />
+        </FormField>
+      </div>
     </SettingsCard>
   );
 }

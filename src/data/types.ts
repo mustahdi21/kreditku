@@ -403,6 +403,10 @@ export interface IntegrationSettings {
   reminder_offsets: ReminderOffset[];
   reminder_channels: ReminderChannel[];
   reminder_simulation_mode: boolean;
+  /** Payload QRIS statis merchant; diubah portal menjadi QR dinamis saat membayar. */
+  qrisStaticPayload?: string | null;
+  /** Potongan kata yang selalu muncul pada notifikasi pembayaran bank. */
+  qrisNotifMarker?: string | null;
 }
 
 export interface NumberingSettings {
