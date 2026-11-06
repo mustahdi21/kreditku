@@ -24,6 +24,7 @@ import { notifyError, notifyInfo, notifySuccess } from '@/components/common/Toas
 import { MoneyText, PaymentMethodBadge } from '@/components/common/domain';
 import { DataTable, type Column } from '@/components/data/DataTable';
 import { PageHeader } from '@/components/layout/AppShell';
+import { QrisReviewCard } from '@/components/payments/QrisReviewCard';
 import {
   Badge,
   Button,
@@ -348,6 +349,8 @@ export default function PaymentsPage(): JSX.Element {
           ) : null
         }
       />
+
+      <QrisReviewCard />
 
       <Card>
         <CardContent className="space-y-3 p-4 pt-4">
