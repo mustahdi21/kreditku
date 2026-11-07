@@ -7,7 +7,7 @@
  * menjumlahkan apa pun sendiri selain menampilkan hasilnya.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock, Wallet } from 'lucide-react';
 import {
   Badge,
@@ -27,6 +27,7 @@ import {
   formatRupiah,
   isOverdue,
   payableInstallments,
+  PORTAL_LIST_POLL_MS,
   totalOutstanding,
   useMyInstallments,
   useMyQrisRequests,
@@ -46,6 +47,20 @@ export function PortalHomePage(): JSX.Element {
   const installments = useMyInstallments();
   const requests = useMyQrisRequests();
   const [target, setTarget] = useState<TargetBayar | null>(null);
+
+  const adaPermintaanMenunggu = (requests.data ?? []).some((row) => row.status === 'PENDING');
+
+  // Selama masih ada permintaan yang menunggu, daftar tagihan diperiksa berkala.
+  // Tanpa ini, pelanggan yang membayar lalu menutup dialog akan tetap melihat
+  // cicilannya belum lunas sampai halaman dimuat ulang sendiri.
+  useEffect(() => {
+    if (!adaPermintaanMenunggu) return;
+    const pengatur = window.setInterval(() => {
+      void installments.refetch();
+      void requests.refetch();
+    }, PORTAL_LIST_POLL_MS);
+    return () => window.clearInterval(pengatur);
+  }, [adaPermintaanMenunggu, installments, requests]);
 
   if (installments.isLoading) {
     return (

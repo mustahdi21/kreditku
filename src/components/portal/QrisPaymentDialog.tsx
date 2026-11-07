@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { AlertTriangle, Check, Copy, Download, PenLine, RefreshCw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Check, CheckCircle2, Copy, Download, PenLine, RefreshCw } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -37,6 +37,8 @@ import {
   quickAmountsFor,
   useCreateQrisRequest,
   useMerchantQris,
+  useQrisRequestStatus,
+  useRefreshPortalAfterPayment,
   type QrisRequestResult,
 } from '@/data/portal';
 
@@ -77,6 +79,25 @@ export function QrisPaymentDialog({
   const [galatNominal, setGalatNominal] = useState<string | null>(null);
   const [tersalin, setTersalin] = useState(false);
 
+  // Status diperiksa sendiri oleh portal: notifikasi bank sampai ke server
+  // dalam hitungan detik, sehingga pelanggan melihat perubahannya tanpa harus
+  // memuat ulang halaman.
+  const status = useQrisRequestStatus(permintaan?.request_id ?? null);
+  const statusPermintaan = status.data?.status ?? (permintaan ? 'PENDING' : null);
+  const sudahDibayar = statusPermintaan === 'PAID';
+  const perluTinjauan = statusPermintaan === 'REVIEW';
+  const tidakBerlaku = statusPermintaan === 'CANCELLED' || statusPermintaan === 'EXPIRED';
+
+  const refreshPortal = useRefreshPortalAfterPayment();
+  const sudahDisegarkan = useRef(false);
+  useEffect(() => {
+    if (sudahDibayar && !sudahDisegarkan.current) {
+      sudahDisegarkan.current = true;
+      refreshPortal();
+    }
+    if (!sudahDibayar) sudahDisegarkan.current = false;
+  }, [sudahDibayar, refreshPortal]);
+
   // Setiap dibuka, nominal kembali ke tagihan cicilan. Menutup dialog tidak
   // membatalkan permintaan yang sudah dibuat, sehingga QR yang terlanjur
   // ditampilkan tetap dapat dibayar.
@@ -86,6 +107,7 @@ export function QrisPaymentDialog({
       setGalat(null);
       setGalatNominal(null);
       setTersalin(false);
+      sudahDisegarkan.current = false;
       return;
     }
     setNominal(defaultAmount as Rupiah);
@@ -274,7 +296,82 @@ export function QrisPaymentDialog({
           </div>
         ) : null}
 
-        {permintaan && payloadQr ? (
+        {/* Pembayaran diterima: QR digantikan tampilan hasil, supaya pelanggan
+            tidak terlanjur membayar dua kali. */}
+        {sudahDibayar ? (
+          <div className="space-y-4 py-2 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
+              <CheckCircle2 className="h-8 w-8 text-success" aria-hidden />
+            </div>
+            <div className="space-y-1">
+              <p className="text-lg font-semibold">Pembayaran diterima</p>
+              <p className="text-sm text-muted-foreground">
+                Terima kasih. Tagihan Anda sudah tercatat lunas.
+              </p>
+            </div>
+            {status.data ? (
+              <div className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Nominal</span>
+                  <span className="tabular-nums">{formatRupiah(status.data.amount)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Referensi</span>
+                  <span className="font-mono text-xs">{status.data.reference}</span>
+                </div>
+              </div>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              Kuitansi pembayaran dapat dilihat pada halaman Riwayat.
+            </p>
+            <Button className="w-full" onClick={() => onOpenChange(false)}>
+              Selesai
+            </Button>
+          </div>
+        ) : null}
+
+        {/* Uang sudah masuk tetapi belum dapat dicocokkan: ditinjau kasir, bukan
+            diulang pembayarannya. */}
+        {perluTinjauan ? (
+          <div className="space-y-3 py-2">
+            <div className="flex items-start gap-3 rounded-md border border-warning/40 bg-warning/5 p-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+              <div className="space-y-1 text-sm">
+                <p className="font-medium">Pembayaran Anda sedang ditinjau</p>
+                <p className="text-muted-foreground">
+                  Uangnya sudah masuk dan sedang dicocokkan admin dengan tagihan yang tepat. Tidak perlu membayar
+                  ulang — tagihan akan diperbarui setelah dicocokkan.
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
+              Tutup
+            </Button>
+          </div>
+        ) : null}
+
+        {/* Permintaan tidak lagi berlaku: tawarkan membuat yang baru. */}
+        {tidakBerlaku ? (
+          <div className="space-y-3 py-2">
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <div className="space-y-1 text-sm">
+                <p className="font-medium">
+                  {statusPermintaan === 'EXPIRED' ? 'QR ini sudah kedaluwarsa' : 'Permintaan ini dibatalkan'}
+                </p>
+                <p className="text-muted-foreground">
+                  Buat QR baru untuk melanjutkan pembayaran cicilan ini.
+                </p>
+              </div>
+            </div>
+            <Button className="w-full gap-2" onClick={() => setPermintaan(null)}>
+              <RefreshCw aria-hidden />
+              Buat QR baru
+            </Button>
+          </div>
+        ) : null}
+
+        {permintaan && payloadQr && !sudahDibayar && !perluTinjauan && !tidakBerlaku ? (
           <div className="space-y-4">
             <div className="rounded-lg border bg-white p-3">
               <div className="mx-auto w-fit">
@@ -317,6 +414,10 @@ export function QrisPaymentDialog({
                 <span className="text-muted-foreground">Berlaku sampai</span>
                 <span className="text-xs">{formatExpiry(permintaan.expires_at)}</span>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Halaman ini memeriksa status pembayaran secara berkala; setelah bank mengirim notifikasi, tampilannya
+                berubah sendiri menjadi terbayar.
+              </p>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">

@@ -398,3 +398,67 @@ export function usePaymentAllocations(paymentId: string | null) {
     enabled: Boolean(paymentId),
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Pemantauan status pembayaran                                                */
+/* -------------------------------------------------------------------------- */
+
+export interface QrisRequestStatus {
+  readonly id: string;
+  readonly status: QrisRequestRow['status'];
+  readonly reference: string;
+  readonly amount: number;
+  readonly paid_at: string | null;
+  readonly payment_id: string | null;
+  readonly note: string | null;
+}
+
+export async function fetchQrisRequestStatus(requestId: string): Promise<QrisRequestStatus | null> {
+  const result = await supabase()
+    .from(TABLES.qrisRequests)
+    .select('id, status, reference, amount, paid_at, payment_id, note')
+    .eq('id', requestId)
+    .maybeSingle();
+  return unwrapMaybe<QrisRequestStatus>(result as never, 'memuat status permintaan pembayaran');
+}
+
+/** Berapa lama sekali status diperiksa saat pelanggan sedang menunggu pembayaran. */
+export const PAYMENT_POLL_MS = 5000;
+
+/**
+ * Jarak pemeriksaan daftar tagihan di halaman utama.
+ *
+ * Lebih jarang daripada pemeriksaan status di dialog: yang pertama menjaga
+ * halaman tetap mutakhir saat pelanggan tidak sedang menatap QR-nya, sedangkan
+ * yang kedua harus terasa seketika.
+ */
+export const PORTAL_LIST_POLL_MS = 15000;
+
+/**
+ * Memantau satu permintaan pembayaran sampai statusnya berubah.
+ *
+ * Pemeriksaan berhenti sendiri begitu statusnya bukan lagi PENDING. Tanpa itu,
+ * portal akan terus bertanya ke server selama dialognya terbuka — termasuk
+ * setelah pelanggannya selesai atau menutup halaman.
+ *
+ * Jarak 5 detik dipilih karena notifikasi bank sampai ke server dalam hitungan
+ * detik setelah MacroDroid meneruskannya, sehingga pelanggan melihat
+ * perubahannya hampir seketika tanpa memuat ulang halaman.
+ */
+export function useQrisRequestStatus(requestId: string | null) {
+  return useQuery({
+    queryKey: ['portal', 'request-status', requestId] as const,
+    queryFn: async () => fetchQrisRequestStatus(requestId as string),
+    enabled: Boolean(requestId),
+    refetchInterval: (query) => (query.state.data?.status === 'PENDING' ? PAYMENT_POLL_MS : false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** Menyegarkan seluruh data portal setelah pembayaran diterima. */
+export function useRefreshPortalAfterPayment() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ['portal'] });
+  };
+}
